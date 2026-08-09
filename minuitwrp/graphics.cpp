@@ -386,6 +386,19 @@ int gr_init(void)
     printf("Skipping adf graphics -- not present in build tree\n");
 #endif
 
+    /* Hisense A9 E Ink: this panel is not driven by DRM (stock recovery own
+     * atomic commits fail too). Try the vendor SW-TCON backend first; it
+     * returns NULL when the prebuilt is absent, so other devices fall
+     * through unaffected. */
+    if (!gr_backend || !gr_draw) {
+        gr_backend = open_hmct_epd();
+        gr_draw = gr_backend->init(gr_backend);
+        if (gr_draw)
+            printf("Using hmct epd graphics.\n");
+        else
+            gr_backend = NULL;
+    }
+
 #ifdef HAS_DRM
     if (!gr_backend || !gr_draw) {
         gr_backend = open_drm();

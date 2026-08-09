@@ -104,6 +104,11 @@ func globalSrcs(ctx android.BaseContext) []string {
 		srcs = append(srcs, "graphics_drm.cpp")
 	}
 
+	// Hisense A9 E Ink backend. Always built: it probes for the vendor
+	// prebuilt at runtime and returns NULL when absent, so it costs other
+	// devices nothing and needs no vendor/twrp Soong export.
+	srcs = append(srcs, "graphics_hmct_epd.cpp")
+
 	if getMakeVars(ctx, "TW_HAPTICS_TSPDRV") == "true" {
 		srcs = append(srcs, "tspdrv.cpp")
 	}
