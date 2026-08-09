@@ -78,6 +78,16 @@ func globalFlags(ctx android.BaseContext) []string {
 			cflags = append(cflags, "-DTW_ROTATION=0")
 		}
 	}
+
+	// Use the legacy drmModeSetCrtc() path instead of the atomic plane setup.
+	// Needed on panels whose driver mis-programs the atomic SRC_*/CRTC_* plane
+	// properties -- e.g. the Hisense A9 (HLTE556N) E Ink display, where the
+	// atomic path scatters output across the panel in striped bands while
+	// stock AOSP recovery drives the same panel correctly via legacy KMS.
+	if getMakeVars(ctx, "TW_DRM_LEGACY_MODESET") == "true" {
+		cflags = append(cflags, "-DTW_DRM_LEGACY_MODESET")
+	}
+
 	return cflags
 }
 

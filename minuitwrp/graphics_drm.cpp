@@ -100,6 +100,10 @@ static drmModeConnector *main_monitor_connector;
 
 static int drm_fd = -1;
 
+#ifdef TW_DRM_LEGACY_MODESET
+static void drm_legacy_setcrtc();
+#endif
+
 static bool current_blank_state = true;
 static int fb_prop_id;
 static struct Crtc crtc_res;
@@ -897,15 +901,49 @@ static GRSurface* drm_init(minui_backend* backend __unused) {
   prop_id = find_plane_prop_id(plane_res[0].plane->plane_id, "FB_ID", plane_res);
   fb_prop_id = prop_id;
 
+#ifdef TW_DRM_LEGACY_MODESET
+  /* Program the CRTC the legacy way instead of the atomic pipeline. */
+  drm_legacy_setcrtc();
+#else
   drm_blank(nullptr, false);
+#endif
 
   return draw_buf;
 }
 
+#ifdef TW_DRM_LEGACY_MODESET
+/*
+ * Legacy (non-atomic) modeset path.
+ *
+ * Some panels -- notably the Hisense A9 (HLTE556N) E Ink display, driven over
+ * DSI through a tc358767 bridge -- are mis-programmed by the atomic plane
+ * setup above. The plane SRC_*/CRTC_* properties produce output scattered
+ * across the panel in striped bands. Stock AOSP recovery drives the very same
+ * panel correctly using the legacy drmModeSetCrtc() path, which lets the
+ * driver configure the plane itself.
+ *
+ * Enable with TW_DRM_LEGACY_MODESET := true in BoardConfig.mk.
+ */
+static void drm_legacy_setcrtc() {
+    if (!main_monitor_crtc || !main_monitor_connector) return;
+    if (drmModeSetCrtc(drm_fd, main_monitor_crtc->crtc_id,
+                       drm_surfaces[current_buffer]->fb_id,
+                       0, 0,
+                       &main_monitor_connector->connector_id, 1,
+                       &main_monitor_crtc->mode)) {
+        printf("drm_legacy_setcrtc: drmModeSetCrtc failed\n");
+    }
+}
+#endif
+
 static GRSurface* drm_flip(minui_backend* backend __unused) {
     memcpy(drm_surfaces[current_buffer]->base.data,
             draw_buf->data, draw_buf->height * draw_buf->row_bytes);
+#ifdef TW_DRM_LEGACY_MODESET
+    drm_legacy_setcrtc();
+#else
     update_plane_fb();
+#endif
     current_buffer = 1 - current_buffer;
     return draw_buf;
 }
