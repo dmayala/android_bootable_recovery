@@ -70,7 +70,6 @@ static void (*p_drawImage)(void*) = NULL;
 static void (*p_EpdBlank)(void) = NULL;
 static void (*p_EpdUnblank)(void) = NULL;
 static void (*p_DeInitEpd)(void) = NULL;
-static void (*p_WaitEpd2Idle)(void) = NULL;
 
 static unsigned char* pixels = NULL;
 static GRSurface gr_surf;
@@ -104,7 +103,6 @@ static GRSurface* hmct_init(minui_backend* backend __unused) {
     p_EpdBlank   = (void (*)(void))dlsym(lib, "_Z8EpdBlankv");
     p_DeInitEpd  = (void (*)(void))dlsym(lib, "_Z9DeInitEpdv");
     p_drawImage  = (void (*)(void*))dlsym(lib, "_Z9drawImageP9GRSurface");
-    p_WaitEpd2Idle = (void (*)(void))dlsym(lib, "_Z12WaitEpd2Idlev");
 
     if (!p_gr_init || !p_InitEpd || !p_EpdUnblank || !p_drawImage) {
         printf("hmct_epd: required symbols missing; falling back\n");
@@ -148,13 +146,6 @@ static GRSurface* hmct_init(minui_backend* backend __unused) {
  * the TCON thread drives it out, so there is nothing to page-flip between. */
 static GRSurface* hmct_flip(minui_backend* backend __unused) {
     if (p_drawImage) p_drawImage(&stock_surf);
-
-    /* Serialise against the TCON. Without this TWRP queues the next frame
-     * while the software TCON is still streaming waveform frames for the
-     * previous one; the driver drops them ("epd send lost image", then
-     * "epd acquire a lost image") and the panel ends up partially updated --
-     * observed as stripes across the top of the screen. */
-    if (p_WaitEpd2Idle) p_WaitEpd2Idle();
     return &gr_surf;
 }
 
