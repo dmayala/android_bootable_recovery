@@ -33,6 +33,9 @@
 #include <sys/mount.h>
 #include <time.h>
 #include <unistd.h>
+#include <algorithm>
+#include <atomic>
+#include <string>
 
 extern "C"
 {
@@ -569,6 +572,90 @@ static void loopTimer(int input_timeout_ms)
 	} while (1);
 }
 
+// ---- Hisense A9 E Ink: one full refresh per page change -------------------
+//
+// The first frame of a new page (or overlay) is drawn with the full GC16
+// waveform instead of the partial one, which clears the previous page's
+// ghosting. Both waveforms are 38 frames, so this costs no extra update.
+// Rapid navigation does not queue refreshes: at most one forced refresh per
+// EPD_PAGE_REFRESH_MIN_MS; a page change inside that window gets a single
+// trailing full redraw once navigation has been quiet for EPD_PAGE_SETTLE_MS.
+// Keyboard keys, list scrolling, progress and console output are not page
+// changes and keep the partial waveform.
+//
+// Off switch: TWRP variable tw_eink_page_refresh=0 (Settings > Screen, or
+// `twrp set tw_eink_page_refresh 0`). Only active on the hmct E Ink backend.
+#define EPD_PAGE_REFRESH_MIN_MS 1000
+#define EPD_PAGE_SETTLE_MS 400
+
+static std::atomic<bool> epd_page_dirty(false);
+static std::atomic<long long> epd_last_change_ms(0);
+static long long epd_last_forced_ms = -100000;  // GUI thread only
+
+static long long epd_now_ms(void)
+{
+	timespec t;
+	clock_gettime(CLOCK_MONOTONIC, &t);
+	return (long long)t.tv_sec * 1000 + t.tv_nsec / 1000000;
+}
+
+static bool epd_page_refresh_enabled(void)
+{
+	std::string v;
+	if (DataManager::GetValue("tw_eink_page_refresh", v) != 0)
+		return true;  // a theme without the variable: on
+	return v != "0";
+}
+
+// Any thread (actions run in their own thread).
+static void epd_note_page_change(void)
+{
+	if (!gr_epd_active())
+		return;
+	epd_last_change_ms = epd_now_ms();
+	epd_page_dirty = true;
+}
+
+// GUI thread, right before the flip of a fully rendered frame.
+static void epd_before_flip(void)
+{
+	if (!epd_page_dirty)
+		return;
+	if (!epd_page_refresh_enabled()) {
+		epd_page_dirty = false;
+		return;
+	}
+	long long now = epd_now_ms();
+	if (now - epd_last_forced_ms < EPD_PAGE_REFRESH_MIN_MS)
+		return;  // too soon: epd_trailing_refresh() takes it
+	epd_page_dirty = false;
+	epd_last_forced_ms = now;
+	if (gr_epd_force_next_flip() == 0)
+		LOGINFO("E Ink: full refresh on page change\n");
+}
+
+// GUI thread, every loop. Returns how many ms until a pending trailing
+// refresh is due (so the input wait can be shortened), or -1.
+static int epd_trailing_refresh(void)
+{
+	if (!epd_page_dirty)
+		return -1;
+	if (!epd_page_refresh_enabled()) {
+		epd_page_dirty = false;
+		return -1;
+	}
+	long long now = epd_now_ms();
+	long long due = std::max(epd_last_forced_ms + EPD_PAGE_REFRESH_MIN_MS,
+				 epd_last_change_ms.load() + EPD_PAGE_SETTLE_MS);
+	if (due > now)
+		return (int)(due - now);
+	epd_page_dirty = false;
+	epd_last_forced_ms = now;
+	if (gr_epd_full_refresh() == 0)
+		LOGINFO("E Ink: full refresh after navigation settled\n");
+	return -1;
+}
+
 static int runPages(const char *page_name, const int stop_on_page_done)
 {
 	DataManager::SetValue("tw_page_done", 0);
@@ -660,8 +747,16 @@ static int runPages(const char *page_name, const int stop_on_page_done)
 		{
 			gForceRender.set_value(0);
 			PageManager::Render();
+			epd_before_flip();
 			flip();
 			input_timeout_ms = 0;
+		}
+
+		{
+			int epd_wait = epd_trailing_refresh();
+			// only ever shorten the idle input wait (0 = do not wait)
+			if (epd_wait >= 0 && input_timeout_ms > 0 && epd_wait < input_timeout_ms)
+				input_timeout_ms = epd_wait > 0 ? epd_wait : 1;
 		}
 
 		blankTimer.checkForTimeout();
@@ -693,6 +788,7 @@ int gui_changePage(std::string newPage)
 	LOGINFO("Set page: '%s'\n", newPage.c_str());
 	PageManager::ChangePage(newPage);
 	gForceRender.set_value(1);
+	epd_note_page_change();
 	return 0;
 }
 
@@ -701,6 +797,7 @@ int gui_changeOverlay(std::string overlay)
 	LOGINFO("Set overlay: '%s'\n", overlay.c_str());
 	PageManager::ChangeOverlay(overlay);
 	gForceRender.set_value(1);
+	epd_note_page_change();
 	return 0;
 }
 

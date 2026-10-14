@@ -106,12 +106,16 @@ int vibrate(int timeout_ms);
 //
 // gr_epd_full_refresh(): redraw the current screen with the full (GC16)
 //   waveform, which drives every pixel and so removes ghosting.
+// gr_epd_force_next_flip(): make the next gr_flip() use the full waveform,
+//   so the frame it shows is drawn with a full refresh instead of a partial
+//   one (one update, not two). For the page-change refresh in gui.cpp.
 // gr_epd_show_image(): put a still image (a PNG path) on the panel, wait up to
 //   timeout_ms for the E Ink update to finish, and stop drawing UI frames
 //   afterwards so the still stays on the glass. For power-off.
 #define GR_EPD_POWEROFF_IMAGE "/system/etc/hmct_epd_poweroff.png"
 bool gr_epd_active(void);
 int gr_epd_full_refresh(void);
+int gr_epd_force_next_flip(void);
 int gr_epd_show_image(const char* png_path, int timeout_ms);
 
 #endif

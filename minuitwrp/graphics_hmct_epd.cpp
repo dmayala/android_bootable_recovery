@@ -111,6 +111,8 @@ static GRSurface gr_surf;
 static bool ready = false;
 /* Set by gr_epd_show_image(): no more UI frames reach the panel. */
 static bool frozen = false;
+/* Set by gr_epd_force_next_flip(): the next flip is a full refresh. */
+static bool force_next = false;
 /* Serialises drawImage() between the GUI thread and callers of the
  * gr_epd_* API (power-off can come from the ORS thread). */
 static pthread_mutex_t draw_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -201,7 +203,14 @@ static GRSurface* hmct_init(minui_backend* backend __unused) {
  * the TCON thread drives it out, so there is nothing to page-flip between. */
 static GRSurface* hmct_flip(minui_backend* backend __unused) {
     pthread_mutex_lock(&draw_lock);
-    if (p_drawImage && !frozen) p_drawImage(&stock_surf);
+    if (p_drawImage && !frozen) {
+        /* One-shot, like gr_epd_full_refresh(): the TCON reads the flag when
+         * it takes the next image, which is this frame (or a newer one that
+         * replaced it in the lost-image slot while an update was running). */
+        if (force_next && p_ForceClearGhosting) p_ForceClearGhosting(1);
+        p_drawImage(&stock_surf);
+    }
+    force_next = false;
     pthread_mutex_unlock(&draw_lock);
     return &gr_surf;
 }
@@ -239,6 +248,14 @@ int gr_epd_full_refresh(void) {
     }
     pthread_mutex_unlock(&draw_lock);
     printf("hmct_epd: full refresh\n");
+    return 0;
+}
+
+int gr_epd_force_next_flip(void) {
+    if (!ready || !p_ForceClearGhosting) return -1;
+    pthread_mutex_lock(&draw_lock);
+    force_next = true;
+    pthread_mutex_unlock(&draw_lock);
     return 0;
 }
 
