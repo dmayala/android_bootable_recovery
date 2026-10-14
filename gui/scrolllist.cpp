@@ -29,6 +29,10 @@ extern "C" {
 #include "../data.hpp"
 
 const float SCROLLING_SPEED_DECREMENT = 0.9; // friction
+// E Ink (Hisense A9 hmct backend): every intermediate fling position is a panel
+// update, so a fling at 0.9 friction drew ~30+ small steps and felt laggy
+// (user, 2026-10-14). Much higher friction settles in a few large steps.
+const float SCROLLING_SPEED_DECREMENT_EPD = 0.6;
 const int SCROLLING_FLOOR = 2; // minimum pixels for scrolling to stop
 
 GUIScrollList::GUIScrollList(xml_node<>* node) : GUIObject(node)
@@ -381,7 +385,7 @@ int GUIScrollList::Update(void)
 			y_offset += scrollingSpeed;
 		else
 			y_offset += maxScrollDistance;
-		scrollingSpeed *= SCROLLING_SPEED_DECREMENT;
+		scrollingSpeed *= gr_epd_active() ? SCROLLING_SPEED_DECREMENT_EPD : SCROLLING_SPEED_DECREMENT;
 		if (scrollingSpeed == oldScrollingSpeed)
 			--scrollingSpeed;
 	} else if (scrollingSpeed < 0) {
@@ -389,7 +393,7 @@ int GUIScrollList::Update(void)
 			y_offset += scrollingSpeed;
 		else
 			y_offset -= maxScrollDistance;
-		scrollingSpeed *= SCROLLING_SPEED_DECREMENT;
+		scrollingSpeed *= gr_epd_active() ? SCROLLING_SPEED_DECREMENT_EPD : SCROLLING_SPEED_DECREMENT;
 		if (scrollingSpeed == oldScrollingSpeed)
 			++scrollingSpeed;
 	}
