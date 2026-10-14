@@ -59,6 +59,7 @@
 #include <sys/reboot.h>
 #include "gui/rapidxml.hpp"
 #include "gui/pages.hpp"
+#include "minuitwrp/minui.h"
 #endif // ndef BUILD_TWRPTAR_MAIN
 #ifndef TW_EXCLUDE_ENCRYPTED_BACKUPS
 	#include "openaes/inc/oaes_lib.h"
@@ -639,6 +640,12 @@ int TWFunc::tw_reboot(RebootCommand command)
 			return property_set(ANDROID_RB_PROPERTY, "reboot,bootloader");
 		case rb_poweroff:
 			check_and_run_script("/system/bin/poweroff.sh", "power off");
+			// E Ink (Hisense A9): the glass keeps its last image with the power
+			// off, so leave a still there instead of the last TWRP screen. Waits
+			// for the panel update to finish. No-op on other displays, or when
+			// the image is not in the ramdisk. Power-off only, never reboot.
+			if (gr_epd_active())
+				gr_epd_show_image(GR_EPD_POWEROFF_IMAGE, 4000);
 #ifdef ANDROID_RB_PROPERTY
 			return property_set(ANDROID_RB_PROPERTY, "shutdown,");
 #elif defined(ANDROID_RB_POWEROFF)

@@ -301,6 +301,10 @@ void InputHandler::process_EV_ABS(input_event& ev)
 	}
 }
 
+// Hisense A9 (HLTE556N) E Ink button: EV_KEY 0x2fe on gpio-keys, measured
+// with getevent. No keylayout maps it; TWRP sees the raw code.
+#define KEY_HMCT_EINK 0x2fe
+
 void InputHandler::process_EV_KEY(input_event& ev)
 {
 	HardwareKeyboard *kb = PageManager::GetHardwareKeyboard();
@@ -337,6 +341,17 @@ void InputHandler::process_EV_KEY(input_event& ev)
 			kb->KeyDown(KEY_BACK);
 		else
 			kb->KeyUp(KEY_BACK);
+	}
+	// E Ink button: full (GC16) redraw of the current screen to clear
+	// ghosting. Consumed here, never passed to the theme.
+	else if (ev.code == KEY_HMCT_EINK && gr_epd_active())
+	{
+		if (ev.value == 1) {
+			LOGINFO("E Ink key: full refresh\n");
+			gr_epd_full_refresh();
+		}
+		key_status = KS_NONE;
+		touch_status = TS_NONE;
 	} else if (ev.value != 0) {
 		// This is a key press
 #ifdef TW_USE_KEY_CODE_TOUCH_SYNC

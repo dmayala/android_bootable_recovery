@@ -100,4 +100,18 @@ int res_scale_surface(gr_surface source, gr_surface* destination, float scale_w,
 
 int vibrate(int timeout_ms);
 
+// Hisense A9 (HLTE556N) E Ink, implemented by the graphics_hmct_epd backend.
+// On any other backend gr_epd_active() is false and the others return -1
+// without doing anything.
+//
+// gr_epd_full_refresh(): redraw the current screen with the full (GC16)
+//   waveform, which drives every pixel and so removes ghosting.
+// gr_epd_show_image(): put a still image (a PNG path) on the panel, wait up to
+//   timeout_ms for the E Ink update to finish, and stop drawing UI frames
+//   afterwards so the still stays on the glass. For power-off.
+#define GR_EPD_POWEROFF_IMAGE "/system/etc/hmct_epd_poweroff.png"
+bool gr_epd_active(void);
+int gr_epd_full_refresh(void);
+int gr_epd_show_image(const char* png_path, int timeout_ms);
+
 #endif
